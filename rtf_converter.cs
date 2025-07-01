@@ -1,17 +1,30 @@
-using System;
-using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Text;
 
-class Program
+void main()
 {
-    static string RtfToTxt(string rtf)
-    {
-        var pattern = new Regex(
-            @"\\([a-z]{1,32})(-?\d{1,10})?[ ]?|\\'([0-9a-f]{2})|\\([^a-z])|([{}])|[\r\n]+|(.)",
-            RegexOptions.IgnoreCase);
+    // Sample RTF text (potentially incorrect format)
+    string rtfText = "{\\rtf1\\ansi\\Hello, World!}";
 
-        var destinations = new HashSet<string>
+    // Attempt to convert RTF to plain text
+    try
+    {
+        string plainText = rtf_to_txt(rtfText);
+    }
+    catch (Exception e)
+    {
+        //An error occurred during the conversion
+    }
+}
+
+
+string rtf_to_txt(string rtf)
+{
+    var pattern = new Regex(
+        @"\\([a-z]{1,32})(-?\d{1,10})?[ ]?|\\'([0-9a-f]{2})|\\([^a-z])|([{}])|[\r\n]+|(.)",
+        RegexOptions.IgnoreCase);
+
+    var destinations = new HashSet<string>
         {
             "aftncn","aftnsep","aftnsepc","annotation","atnauthor","atndate","atnicn","atnid",
             "atnparent","atnref","atntime","atrfend","atrfstart","author","background",
@@ -55,7 +68,7 @@ class Program
             "xmlattrname","xmlattrvalue","xmlclose","xmlname","xmlnstbl","xmlopen",
         };
 
-        var specialchars = new Dictionary<string, string>
+    var specialchars = new Dictionary<string, string>
         {
             { "par", "\n" },
             { "sect", "\n\n" },
@@ -74,104 +87,103 @@ class Program
             { "rdblquote", "\u201D" },
         };
 
-        var stack = new Stack<(int, bool)>();
-        bool ignorable = false;
-        int ucskip = 1;
-        int curskip = 0;
-        var outText = new StringBuilder();
+    var stack = new Stack<(int, bool)>();
+    bool ignorable = false;
+    int ucskip = 1;
+    int curskip = 0;
+    var outText = new StringBuilder();
 
-        foreach (Match match in pattern.Matches(rtf))
+    foreach (Match match in pattern.Matches(rtf))
+    {
+        var word = match.Groups[1].Value;
+        var arg = match.Groups[2].Value;
+        var hex = match.Groups[3].Value;
+        var chr = match.Groups[4].Value;
+        var brace = match.Groups[5].Value;
+        var tchar = match.Groups[6].Value;
+
+        if (!string.IsNullOrEmpty(brace))
         {
-            var word = match.Groups[1].Value;
-            var arg = match.Groups[2].Value;
-            var hex = match.Groups[3].Value;
-            var chr = match.Groups[4].Value;
-            var brace = match.Groups[5].Value;
-            var tchar = match.Groups[6].Value;
-
-            if (!string.IsNullOrEmpty(brace))
+            curskip = 0;
+            if (brace == "{")
             {
-                curskip = 0;
-                if (brace == "{")
-                {
-                    stack.Push((ucskip, ignorable));
-                }
-                else if (brace == "}")
-                {
-                    (ucskip, ignorable) = stack.Pop();
-                }
+                stack.Push((ucskip, ignorable));
             }
-            else if (!string.IsNullOrEmpty(chr))
+            else if (brace == "}")
             {
-                curskip = 0;
-                if (chr == "~" && !ignorable)
-                {
-                    outText.Append('\u00A0');
-                }
-                else if (chr == "{" || chr == "}" || chr == "\\")
-                {
-                    if (!ignorable)
-                    {
-                        outText.Append(chr);
-                    }
-                }
-                else if (chr == "*")
-                {
-                    ignorable = true;
-                }
-            }
-            else if (!string.IsNullOrEmpty(word))
-            {
-                curskip = 0;
-                if (destinations.Contains(word))
-                {
-                    ignorable = true;
-                }
-                else if (ignorable)
-                {
-                    // Skip control word
-                }
-                else if (specialchars.TryGetValue(word, out var special))
-                {
-                    outText.Append(special);
-                }
-                else if (word == "uc")
-                {
-                    ucskip = int.Parse(arg);
-                }
-                else if (word == "u")
-                {
-                    int c = int.Parse(arg);
-                    if (c < 0) c += 0x10000;
-                    outText.Append((char)c);
-                    curskip = ucskip;
-                }
-            }
-            else if (!string.IsNullOrEmpty(hex))
-            {
-                if (curskip > 0)
-                {
-                    curskip--;
-                }
-                else if (!ignorable)
-                {
-                    int c = Convert.ToInt32(hex, 16);
-                    outText.Append((char)c);
-                }
-            }
-            else if (!string.IsNullOrEmpty(tchar))
-            {
-                if (curskip > 0)
-                {
-                    curskip--;
-                }
-                else if (!ignorable)
-                {
-                    outText.Append(tchar);
-                }
+                (ucskip, ignorable) = stack.Pop();
             }
         }
-
-        return outText.ToString();
+        else if (!string.IsNullOrEmpty(chr))
+        {
+            curskip = 0;
+            if (chr == "~" && !ignorable)
+            {
+                outText.Append('\u00A0');
+            }
+            else if (chr == "{" || chr == "}" || chr == "\\")
+            {
+                if (!ignorable)
+                {
+                    outText.Append(chr);
+                }
+            }
+            else if (chr == "*")
+            {
+                ignorable = true;
+            }
+        }
+        else if (!string.IsNullOrEmpty(word))
+        {
+            curskip = 0;
+            if (destinations.Contains(word))
+            {
+                ignorable = true;
+            }
+            else if (ignorable)
+            {
+                // Skip control word
+            }
+            else if (specialchars.TryGetValue(word, out var special))
+            {
+                outText.Append(special);
+            }
+            else if (word == "uc")
+            {
+                ucskip = int.Parse(arg);
+            }
+            else if (word == "u")
+            {
+                int c = int.Parse(arg);
+                if (c < 0) c += 0x10000;
+                outText.Append((char)c);
+                curskip = ucskip;
+            }
+        }
+        else if (!string.IsNullOrEmpty(hex))
+        {
+            if (curskip > 0)
+            {
+                curskip--;
+            }
+            else if (!ignorable)
+            {
+                int c = Convert.ToInt32(hex, 16);
+                outText.Append((char)c);
+            }
+        }
+        else if (!string.IsNullOrEmpty(tchar))
+        {
+            if (curskip > 0)
+            {
+                curskip--;
+            }
+            else if (!ignorable)
+            {
+                outText.Append(tchar);
+            }
+        }
     }
+
+    return outText.ToString().Trim();
 }
